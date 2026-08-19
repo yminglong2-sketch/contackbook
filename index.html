@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聯絡簿</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'washi': '#143022',      // 經典深綠黑板背景色
+                        'ao': '#fde047',         // 黃色粉筆色
+                        'ao-dark': '#eab308',    // 深黃色粉筆色
+                        'sakura': '#f9a8d4',     // 粉紅粉筆色
+                        'sakura-dark': '#f472b6',
+                        'sumi': '#f3f4f6',       // 白色粉筆色
+                        'wood': '#854d0e',       // 木製槽原木色
+                        'wood-dark': '#713f12',  // 深木色
+                        'board-card': '#1b3f2d', // 稍亮一點的綠黑板色（用於卡片區塊）
+                        'chalk-blue': '#7dd3fc'  // 藍色粉筆色
+                    },
+                    fontFamily: {
+                        'sans': ['"Klee One"', '"Noto Sans TC"', 'sans-serif'],
+                        'serif': ['"Klee One"', 'serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* 優先引入 Google Fonts 雲端字體庫 (含 Klee One 粉筆字 與 Bpmf Iansui 芫荽注音體) */
+        @import url('https://fonts.googleapis.com/css2?family=Klee+One:wght@400;600&family=Bpmf+Iansui&display=swap');
+
+        body { 
+            background-color: #143022; 
+            color: #f3f4f6; 
+            background-image: url('https://www.transparenttextures.com/patterns/black-chalk.png'); /* 疊加黑板粉筆灰材質 */
+            font-family: 'Klee One', 'Noto Sans TC', sans-serif;
+        }
+        /* 木製外框大黑板樣式 */
+        .wood-board {
+            border: 12px solid #5c3a21;
+            border-radius: 8px;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.8), 0 10px 25px rgba(0,0,0,0.6);
+            background-color: #143022;
+            background-image: url('https://www.transparenttextures.com/patterns/black-chalk.png');
+            border-style: ridge;
+        }
+        /* 粉筆手繪感點虛線 */
+        .japanese-border { 
+            border: 2px dashed rgba(253, 224, 71, 0.4) !important; 
+            border-radius: 4px; 
+            background-color: rgba(255, 255, 255, 0.02) !important; 
+        }
+        .japanese-border::after { display: none; }
+        
+        /* 表單元素全面黑板化 */
+        input, select, textarea, [contenteditable="true"] {
+            background-color: #0d2117 !important;
+            color: #f3f4f6 !important;
+            border: 1.5px dashed rgba(243, 244, 246, 0.3) !important;
+            border-radius: 4px;
+        }
+        input:focus, select:focus, [contenteditable="true"]:focus {
+            border-color: #fde047 !important;
+            outline: none;
+            box-shadow: 0 0 6px rgba(253, 224, 71, 0.3);
+        }
+        
+        /* 統一文字預設粉筆高對比度 */
+        h1, h2, h3, h4 {
+            color: #fde047 !important; /* 重要標題預設黃粉筆色 */
+            text-shadow: 0 0 2px rgba(253, 224, 71, 0.2);
+        }
+        
+        /* 自訂滾動條（粉筆色系） */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #143022; }
+        ::-webkit-scrollbar-thumb { background: #fde047; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #eab308; }
+        
+        .modal { display: none; background-color: rgba(13, 33, 23, 0.85); }
+        .modal.active { display: flex; }
+        .modal > div {
+            background-image: url('https://www.transparenttextures.com/patterns/black-chalk.png') !important;
+        }
+        
+        .toast {
+            position: fixed; bottom: 20px; right: 20px;
+            background: #fde047; color: #143022; padding: 12px 24px;
+            border-radius: 4px; box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            transform: translateY(100px); opacity: 0; transition: all 0.3s ease;
+            z-index: 1000; font-weight: bold;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+        .toast.error { background: #fbcfe8; color: #143022; }
+        
+        /* 引入芫荽注音體備援機制 */
+        @font-face {
+            font-family: 'Bpmf Iansui';
+            src: local('Bpmf Iansui'), local('BpmfIansui'), local('芫荽注音體'), 
+                 url('https://cdn.jsdelivr.net/gh/max32002/bpmf@master/webfonts/BpmfIansui-Regular.woff2') format('woff2');
+            font-display: swap;
+        }
+        
+        /* 編輯器相關樣式 */
+        #entry-content:empty:before {
+            content: attr(data-placeholder);
+            color: #a3b8aa;
+            pointer-events: none;
+            display: block;
+        }
+        /* 在編輯器內預覽注音體時，確保給予足夠的行高以顯示注音 */
+        #entry-content font[face*="Bpmf"] {
+            line-height: 2.2;
+            display: inline-block;
+        }
+        
+        /* 讓編輯器與內容內的超連結有明顯樣式 (天藍色粉筆色) */
+        a, #entry-content a { color: #7dd3fc !important; text-decoration: underline; font-weight: bold; }
+        
+        /* 修正 Tailwind 重置，讓文字編輯器的字體大小生效 (對應 1~7 等級為具體 px) */
+        font[size="1"] { font-size: 12px; }
+        font[size="2"] { font-size: 14px; }
+        font[size="3"] { font-size: 16px; }
+        font[size="4"] { font-size: 18px; }
+        font[size="5"] { font-size: 20px; }
+        font[size="6"] { font-size: 24px; }
+        font[size="7"] { font-size: 36px; }
+
+        /* 直式排版專用樣式 */
+        .vertical-text-layout {
+            writing-mode: vertical-rl;
+            text-orientation: mixed; /* 改回 mixed 讓標點符號自然旋轉與使用垂直版本 */
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            /* padding-bottom: 1rem; 移除，改由 flex-grow 自動撐開 */
+            /* padding-top: 0.5rem; 移除，改由 flex-grow 自動撐開 */
+        }
+        /* 橫式排版專用樣式 */
+        .horizontal-text-layout {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 1rem; /* 增加內距讓文字不會貼邊 */
+        }
+        .vertical-text-layout .tag-badge {
+            writing-mode: horizontal-tb;
+            display: inline-block;
+            margin-bottom: 0.5rem;
+        }
+
+        /* --- 新增：內容自動適應與防破版設定 --- */
+        .content-auto-wrap {
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            word-break: break-word;
+            max-width: 100%;
+        }
+        .content-auto-wrap img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 6px;
+        }
+        .content-auto-wrap table {
+            width: 100% !important;
+            max-width: 100%;
+            overflow-x: auto;
+            display: block; /* 在小螢幕上讓寬表格可以獨立左右滑動 */
+        }
+        .vertical-text-layout .content-auto-wrap table {
+            display: table; /* 直排時恢復原生表格佈局 */
+        }
+    </style>
+</head>
+<body class="font-sans min-h-screen flex flex-col">
+
+    <!-- Header (原木木框質感頂部) -->
+    <header class="bg-wood-dark text-sumi shadow-md relative z-10 border-b-4 border-wood">
+        <div class="container mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-chalkboard text-2xl text-ao"></i>
+                <h1 class="text-2xl font-serif font-bold tracking-wider flex items-center gap-2 !text-sumi">
+                    <span id="main-system-title">聯絡簿</span>
+                    <button id="btn-edit-title" onclick="App.editSystemTitle()" class="hidden text-sm opacity-70 hover:opacity-100 transition"><i class="fa-solid fa-pen"></i></button>
+                </h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <div id="user-info" class="hidden text-sm">
+                    <span id="welcome-msg" class="mr-2 text-sumi"></span>
+                    <span id="role-badge" class="bg-washi text-ao border border-ao/30 px-2 py-1 rounded text-xs font-bold"></span>
+                </div>
+                <button id="btn-login-modal" class="bg-washi text-ao border border-ao/50 px-4 py-1.5 rounded-full hover:bg-ao hover:text-washi transition shadow text-sm font-bold">
+                    登入管理
+                </button>
+                <button id="btn-password-modal" class="hidden bg-gray-200 text-gray-700 px-4 py-1.5 rounded-full hover:bg-gray-300 transition shadow text-sm font-bold">
+                    修改密碼
+                </button>
+                <button id="btn-logout" class="hidden bg-sakura text-washi px-4 py-1.5 rounded-full hover:bg-sakura-dark transition shadow text-sm font-bold">
+                    登出
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Admin Toolbar (深黑板綠協同工具列) -->
+    <div id="admin-toolbar" class="hidden bg-board-card text-washi shadow-sm border-b border-dashed border-white/20">
+        <div class="container mx-auto px-4 py-2 flex gap-4 text-sm overflow-x-auto text-white">
+            <button onclick="UI.openModal('entry-modal')" class="hover:text-ao transition flex items-center gap-1"><i class="fa-solid fa-plus"></i> 新增聯絡簿</button>
+            <button id="btn-manage-users" onclick="UI.openModal('user-modal')" class="hidden hover:text-ao transition flex items-center gap-1"><i class="fa-solid fa-users"></i> 帳號管理</button>
+            <button id="btn-manage-tags" onclick="UI.openModal('tag-modal')" class="hidden hover:text-ao transition flex items-center gap-1"><i class="fa-solid fa-tags"></i> 標籤管理</button>
+            <button id="btn-manage-links" onclick="UI.openModal('link-modal')" class="hidden hover:text-ao transition flex items-center gap-1"><i class="fa-solid fa-link"></i> 新增資源/文件</button>
+        </div>
+    </div>
+
+    <!-- Main Content (大黑板木外框主框架，底部預留空間放置粉筆槽) -->
+    <main class="container mx-auto px-4 py-8 flex-grow flex flex-col md:flex-row gap-8 wood-board mt-6 mb-8 relative pb-16">
+        
+        <!-- Left/Center Column: Content -->
+        <div class="w-full md:w-2/3 lg:w-3/4 flex flex-col gap-6">
+            
+            <!-- Important Links/Docs (重要文件與網站卡片) -->
+            <section class="bg-board-card p-5 rounded-lg shadow-sm border-2 border-dashed border-white/20">
+                <h2 class="text-xl font-serif text-ao mb-4 border-b border-dashed border-white/10 pb-2"><i class="fa-regular fa-folder-open mr-2"></i>重要文件與網站</h2>
+                <div id="links-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <!-- Links injected here -->
+                    <div class="text-gray-400 text-sm">載入中...</div>
+                </div>
+            </section>
+
+            <!-- Contact Book List (今日交代功課卡片) -->
+            <section>
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-4 border-b-2 border-dashed border-ao pb-2 gap-2">
+                    <div class="flex items-center gap-3">
+                        <h2 class="text-2xl font-serif text-ao"><i class="fa-solid fa-book-open mr-2"></i>今日交代功課</h2>
+                        <span id="current-filter-text" class="text-sm text-yellow-200 bg-white/5 px-2 py-1 rounded border border-dashed border-white/10 hidden">顯示全部</span>
+                    </div>
+                </div>
+                <div id="entries-container" class="flex flex-col gap-4">
+                    <!-- Entries injected here -->
+                    <div class="text-center py-10 text-gray-400">載入中...</div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Right Column: Sidebar (Calendar) -->
+        <div class="w-full md:w-1/3 lg:w-1/4">
+            <div class="sticky top-4 flex flex-col gap-4">
+                
+                <!-- Calendar (已移除搜尋框) -->
+                <div class="bg-board-card rounded-lg shadow-sm border-2 border-dashed border-white/20 overflow-hidden">
+                    <div class="bg-ao-dark text-washi p-3 flex justify-between items-center font-bold">
+                        <button onclick="Calendar.prevMonth()" class="hover:text-white"><i class="fa-solid fa-chevron-left"></i></button>
+                        <h3 id="calendar-month" class="font-serif font-bold text-lg text-washi !text-washi">2023年 10月</h3>
+                        <button onclick="Calendar.nextMonth()" class="hover:text-white"><i class="fa-solid fa-chevron-right"></i></button>
+                    </div>
+                    <div class="p-4">
+                        <div class="grid grid-cols-7 gap-1 text-center text-xs font-bold text-yellow-100 mb-2">
+                            <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+                        </div>
+                        <div id="calendar-grid" class="grid grid-cols-7 gap-1 text-center text-sm">
+                            <!-- Calendar days injected here -->
+                        </div>
+                    </div>
+                    <div class="bg-black/10 p-3 text-xs text-gray-300 border-t border-dashed border-white/10">
+                        <i class="fa-solid fa-circle text-ao mr-1 text-[8px]"></i>表示當日有聯絡簿<br>
+                        點擊日期可篩選該日內容
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 🎨 粉筆夾與板擦收納槽 (還原黑板插圖！) -->
+        <div class="absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-r from-amber-800 via-amber-700 to-amber-800 border-t-2 border-amber-900 flex items-center justify-start px-8 gap-4 select-none z-10 rounded-b shadow-inner">
+            <!-- 白色粉筆 -->
+            <div class="w-12 h-3 bg-slate-100 rounded-full rotate-6 shadow border-b border-slate-300" title="白色粉筆"></div>
+            <!-- 粉紅粉筆 -->
+            <div class="w-14 h-3 bg-pink-300 rounded-full -rotate-3 shadow border-b border-pink-400" title="粉紅粉筆"></div>
+            <!-- 黃色粉筆 -->
+            <div class="w-10 h-3 bg-yellow-200 rounded-full rotate-12 shadow border-b border-yellow-300" title="黃色粉筆"></div>
+            <!-- 藍色粉筆 -->
+            <div class="w-11 h-3 bg-sky-200 rounded-full -rotate-6 shadow border-b border-sky-300" title="藍色粉筆"></div>
+            <!-- 木製板擦 -->
+            <div class="ml-auto w-20 h-5 bg-gradient-to-r from-amber-600 to-amber-500 rounded flex flex-col justify-between shadow border border-amber-700" title="板擦">
+                <div class="w-full h-1.5 bg-neutral-800 rounded-t"></div>
+                <div class="w-full h-1 bg-amber-800"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-wood-dark text-sumi text-center py-6 text-sm mt-auto border-t-4 border-wood">
+        <p>© <span id="footer-year">2026</span> <span id="footer-system-title">和風學園 網路聯絡簿</span>. All rights reserved.</p>
+    </footer>
+
+    <!-- Modals -->
+    
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-center">
+        <div class="bg-board-card p-8 rounded-lg shadow-xl w-full max-w-sm border-t-4 border-ao">
+            <h2 class="text-2xl font-serif text-center mb-6 text-ao">系統登入</h2>
+            <form id="login-form" class="space-y-4" onsubmit="event.preventDefault(); Auth.login();">
+                <div>
+                    <label class="block text-sm font-bold mb-1 text-gray-200">帳號</label>
+                    <input type="text" id="login-username" required class="w-full p-2 border rounded focus:border-ao focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1 text-gray-200">密碼</label>
+                    <input type="password" id="login-password" required class="w-full p-2 border rounded focus:border-ao focus:outline-none">
+                </div>
+                <div class="flex gap-2 pt-4">
+                    <button type="button" onclick="UI.closeModal('login-modal')" class="w-1/3 bg-gray-600 text-white py-2 rounded hover:bg-gray-700 transition">取消</button>
+                    <button type="submit" class="w-2/3 bg-ao text-washi py-2 rounded hover:bg-ao-dark transition">登入</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Entry Modal (Add/Edit) -->
+    <div id="entry-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-center p-4">
+        <div class="bg-board-card rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col border-t-4 border-ao">
+            <div class="p-4 border-b border-dashed border-white/10 flex justify-between items-center bg-board-card">
+                <h2 id="entry-modal-title" class="text-xl font-serif text-ao font-bold">新增聯絡簿</h2>
+                <button onclick="UI.closeModal('entry-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto">
+                <form id="entry-form" class="space-y-4" onsubmit="event.preventDefault(); App.saveEntry();">
+                    <input type="hidden" id="entry-id">
+                    <div>
+                        <label class="block text-sm font-bold mb-1 text-gray-200">日期</label>
+                        <input type="date" id="entry-date" required class="w-full p-2 border rounded focus:border-ao focus:outline-none bg-white">
+                    </div>
+                    <div>
+                        <label id="entry-tag-label" class="block text-sm font-bold mb-1 text-gray-200">點擊標籤，即可插入至下方內容中</label>
+                        <div id="entry-tags-container" class="flex flex-wrap gap-2 p-2 border rounded bg-black/20 min-h-[42px] border-dashed border-white/20">
+                            <!-- Buttons injected here -->
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1 text-gray-200">內容 (支援多行與格式)</label>
+                        
+                        <!-- 簡易文字編輯器工具列 -->
+                        <div class="flex flex-wrap gap-2 mb-2 p-1.5 border rounded bg-black/30 items-center border-dashed border-white/20">
+                            <!-- 字型選擇器 -->
+                            <select onchange="document.execCommand('fontName', false, this.value); this.selectedIndex=0;" class="border rounded px-2 py-1 text-sm focus:outline-none focus:border-ao cursor-pointer">
+                                <option value="">字型</option>
+                                <option value="Klee One">預設粉筆字</option>
+                                <option value="Bpmf Iansui">芫荽注音體</option>
+                            </select>
+                            
+                            <select onchange="document.execCommand('fontSize', false, this.value); this.selectedIndex=0;" class="border rounded px-2 py-1 text-sm focus:outline-none focus:border-ao cursor-pointer">
+                                <option value="">字體大小</option>
+                                <option value="1">12</option>
+                                <option value="2">14</option>
+                                <option value="3">16</option>
+                                <option value="4">18</option>
+                                <option value="5">20</option>
+                                <option value="6">24</option>
+                                <option value="7">36</option>
+                            </select>
+                            
+                            <div class="flex items-center gap-1 bg-black/40 border border-dashed border-white/20 rounded px-1">
+                                <span class="text-xs text-gray-300 pl-1">顏色:</span>
+                                <input type="color" onchange="document.execCommand('foreColor', false, this.value)" title="文字顏色" class="w-7 h-7 p-0 border-0 cursor-pointer rounded bg-transparent">
+                            </div>
+                            <div class="h-6 w-px bg-white/20 mx-1"></div>
+                            <button type="button" onclick="document.execCommand('bold', false, null)" class="w-8 h-8 flex items-center justify-center bg-black/40 border border-dashed border-white/20 hover:bg-black/20 rounded font-bold text-white transition" title="粗體">B</button>
+                            <button type="button" onclick="document.execCommand('italic', false, null)" class="w-8 h-8 flex items-center justify-center bg-black/40 border border-dashed border-white/20 hover:bg-black/20 rounded italic text-white transition" title="斜體">I</button>
+                            <button type="button" onclick="document.execCommand('underline', false, null)" class="w-8 h-8 flex items-center justify-center bg-black/40 border border-dashed border-white/20 hover:bg-black/20 rounded underline text-white transition" title="底線">U</button>
+                            <div class="h-6 w-px bg-white/20 mx-1"></div>
+                            <button type="button" onclick="App.insertLink()" class="w-8 h-8 flex items-center justify-center bg-black/40 border border-dashed border-white/20 hover:bg-black/20 rounded text-white transition" title="插入超連結"><i class="fa-solid fa-link"></i></button>
+                        </div>
+                        <div id="entry-content" contenteditable="true" data-placeholder="如：&#10;1. 數卷x1&#10;2. 國生字" class="w-full p-3 border rounded focus:border-ao focus:outline-none bg-white min-h-[200px] overflow-y-auto content-auto-wrap" style="line-height: 1.6;"></div>
+                    </div>
+                    <div class="flex justify-end gap-3 pt-2">
+                        <button type="button" onclick="UI.closeModal('entry-modal')" class="bg-gray-600 text-white px-6 py-2 rounded hover:bg-gray-700 transition border border-dashed border-white/10">取消</button>
+                        <button type="submit" class="bg-ao text-washi px-6 py-2 rounded hover:bg-ao-dark transition font-bold">儲存</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Fullscreen Presentation Modal (全螢幕展示大黑板) -->
+    <div id="fullscreen-modal" class="modal fixed inset-0 bg-washi z-[100] flex-col overflow-y-auto">
+        <div class="sticky top-0 bg-wood-dark text-sumi p-4 shadow-md flex justify-between items-center z-20 border-b-4 border-wood">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-chalkboard text-lg text-ao"></i>
+                <h2 class="text-lg md:text-xl font-serif font-bold tracking-normal !text-sumi">聯絡簿全螢幕展示</h2>
+            </div>
+            <!-- 加入 flex 容器包裝時鐘與關閉按鈕 -->
+            <div class="flex items-center gap-3 md:gap-6">
+                <!-- 動態時鐘 -->
+                <div id="fs-current-time" class="text-xl md:text-4xl font-bold font-mono tracking-widest opacity-90 text-ao"></div>
+                
+                <button onclick="App.toggleFsLayout()" class="bg-board-card text-ao border border-ao/50 hover:bg-ao hover:text-washi transition px-3 py-1.5 md:px-4 md:py-2 rounded-full text-sm md:text-base font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-retweet"></i> <span class="hidden md:inline">切換直/橫式</span><span class="md:hidden">排版</span>
+                </button>
+
+                <button onclick="UI.closeModal('fullscreen-modal')" class="bg-washi text-ao border border-ao/50 hover:bg-ao hover:text-washi transition px-3 py-1.5 md:px-4 md:py-2 rounded-full text-sm md:text-base font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-times"></i> <span class="hidden md:inline">關閉全螢幕</span><span class="md:hidden">關閉</span>
+                </button>
+            </div>
+        </div>
+        <!-- 放寬容器寬度以容納雙欄 -->
+        <div class="container mx-auto px-4 pt-4 pb-20 max-w-[95%]">
+            <!-- 內容將由 JS 動態注入於此 -->
+            <div id="fs-container">
+            </div>
+        </div>
+    </div>
+
+    <!-- User Management Modal -->
+    <div id="user-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-center p-4">
+        <div class="bg-board-card rounded-lg shadow-xl w-full max-w-3xl flex flex-col border-t-4 border-ao">
+            <div class="p-4 border-b border-dashed border-white/10 flex justify-between items-center bg-board-card">
+                <h2 class="text-xl font-serif text-ao font-bold">帳號管理 (僅管理員)</h2>
+                <button onclick="UI.closeModal('user-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
+            </div>
+            <div class="p-6 flex flex-col md:flex-row gap-6">
+                <!-- Add User Form -->
+                <div class="w-full md:w-1/3 bg-black/20 p-4 rounded border border-dashed border-white/10">
+                    <h3 class="font-bold mb-3 text-sm text-yellow-100">新增帳號</h3>
+                    <form id="user-form" class="space-y-3" onsubmit="event.preventDefault(); Auth.createUser();">
+                        <input type="text" id="new-user-account" placeholder="登入帳號" required class="w-full p-2 border rounded text-sm focus:border-ao focus:outline-none">
+                        <input type="password" id="new-user-pass" placeholder="密碼" required class="w-full p-2 border rounded text-sm focus:border-ao focus:outline-none">
+                        <input type="text" id="new-user-name" placeholder="顯示名稱 (如: 王老師)" required class="w-full p-2 border rounded text-sm focus:border-ao focus:outline-none">
+                        <select id="new-user-role" class="w-full p-2 border rounded text-sm focus:border-ao focus:outline-none bg-board-card text-white">
+                            <option value="collaborator">協作者 (僅能管理自己內容)</option>
+                            <option value="admin">管理員 (全部權限)</option>
+                        </select>
+                        <button type="submit" class="w-full bg-ao text-washi py-2 rounded text-sm hover:bg-opacity-90 font-bold">新增</button>
+                    </form>
+                </div>
+                <!-- User List -->
+                <div class="w-full md:w-2/3 overflow-y-auto max-h-[400px]">
+                    <table class="w-full text-left text-sm border-collapse">
+                        <thead>
+                            <tr class="bg-white/5 text-white">
+                                <th class="p-2 border-b border-dashed border-white/10">名稱</th>
+                                <th class="p-2 border-b border-dashed border-white/10">帳號</th>
+                                <th class="p-2 border-b border-dashed border-white/10">權限</th>
+                                <th class="p-2 border-b border-dashed border-white/10 text-right">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-list-tbody">
+                            <!-- Users injected here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tag Management Modal -->
+    <div id="tag-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-center p-4">
+        <div class="bg-board-card rounded-lg shadow-xl w-full max-w-lg flex flex-col border-t-4 border-sakura">
+            <div class="p-4 border-b border-dashed border-white/10 flex justify-between items-center bg-board-card">
+                <h2 class="text-xl font-serif text-ao font-bold text-white">標籤管理</h2>
+                <button onclick="UI.closeModal('tag-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
+            </div>
+            <div class="px-6 pb-6 pt-3">
+                <form id="tag-form" class="flex gap-2 mb-6" onsubmit="event.preventDefault(); App.addTag();">
+                    <input type="text" id="new-tag-name" placeholder="標籤名稱 (例:重要)" required class="flex-grow p-2 border rounded focus:border-ao focus:outline-none">
+                    <input type="color" id="new-tag-color" value="#D9A0A0" class="p-1 border rounded h-10 w-12 cursor-pointer focus:border-ao focus:outline-none bg-transparent">
+                    <button type="submit" class="bg-sakura text-washi px-4 rounded hover:bg-sakura-dark font-bold">新增</button>
+                </form>
+                <div id="manage-tags-container" class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+                    <!-- Tags list injected here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Links/Docs Management Modal -->
+    <div id="link-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-center p-4">
+        <div class="bg-board-card rounded-lg shadow-xl w-full max-w-lg max-h-[95vh] flex flex-col border-t-4 border-ao">
+            <div class="p-4 border-b border-dashed border-white/10 flex justify-between items-center bg-board-card shrink-0">
+                <h2 id="link-modal-title" class="text-xl font-serif text-ao font-bold text-white">新增資源/文件連結</h2>
+                <button onclick="UI.closeModal('link-modal')" class="text-gray-400 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
+            </div>
+            <div class="px-6 pb-6 pt-3 overflow-y-auto">
+                <form id="link-form" class="space-y-3" onsubmit="event.preventDefault(); App.saveLink();">
+                    <input type="hidden" id="link-id">
+                    <div>
+                        <label class="block text-sm font-bold mb-1 text-gray-200">類型</label>
+                        <select id="link-type" class="w-full px-2 py-1.5 border rounded focus:border-ao focus:outline-none bg-board-card text-white">
+                            <option value="document">文件 (Document)</option>
+                            <option value="website">網站 (Website)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1 text-gray-200">標題</label>
+                        <input type="text" id="link-title" required placeholder="如：本學期行事曆" class="w-full px-2 py-1.5 border rounded focus:border-ao focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1 text-gray-200">標籤 (可複選)</label>
+                        <div id="link-tags-container" class="flex flex-wrap gap-1.5 p-2 border border-dashed border-white/20 rounded bg-black/10 min-h-[42px] max-h-[120px] overflow-y-auto">
+                            <!-- Checkboxes injected here -->
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1 text-gray-200">發布期限 (選填，逾期自動隱藏)</label>
+                        <input type="date" id="link-expire-date" class="w-full px-2 py-1.5 border rounded bg-white focus:outline-none focus:border-ao text-gray-700">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1 text-gray-200">URL 網址</label>
+                        <input type="url" id="link-url" required placeholder="https://..." class="w-full px-2 py-1.5 border rounded focus:border-ao focus:outline-none">
+                    </div>
+                    <div class="flex justify-end pt-2 shrink-0">
+                        <button type="submit" class="bg-ao text-washi px-6 py-2 rounded hover:bg-opacity-90 transition font-bold">儲存</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    <div id="password-modal" class="modal fixed inset-0 bg-black bg-opacity-50 z-50 justify-center items-center p-4">
+        <div class="bg-board-card p-8 rounded-lg shadow-xl w-full max-w-sm border-t-4 border-ao">
+            <h2 class="text-2xl font-serif text-center mb-6 text-ao">修改密碼</h2>
+            <form id="password-form" class="space-y-4" onsubmit="event.preventDefault(); Auth.changePassword();">
+                <div>
+                    <label class="block text-sm font-bold mb-1 text-gray-200">原密碼</label>
+                    <input type="password" id="old-password" required class="w-full p-2 border rounded focus:border-ao focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1 text-gray-200">新密碼</label>
+                    <input type="password" id="new-password" required class="w-full p-2 border rounded focus:border-ao focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1 text-gray-200">確認新密碼</label>
+                    <input type="password" id="confirm-password" required class="w-full p-2 border rounded focus:border-ao focus:outline-none">
+                </div>
+                <div class="flex gap-2 pt-4">
+                    <button type="button" onclick="UI.closeModal('password-modal')" class="w-1/3 bg-gray-600 text-white py-2 rounded hover:bg-gray-700 transition border border-dashed border-white/10">取消</button>
+                    <button type="submit" class="w-2/3 bg-ao text-washi py-2 rounded hover:bg-ao-dark transition font-bold">確認修改</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Custom Toast -->
+    <div id="toast" class="toast">訊息</div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global State
+        window.State = {
+            currentUser: null,
+            isGuest: true,
+            entries: [],
+            links: [],
+            tags: [],
+            users: [],
+            system: null,
+            selectedDate: null,
+            currentCalendarDate: new Date(),
+            isFullscreenVertical: false,
+            currentFsId: null
+        };
+
+        // UI Utilities
+        window.UI = {
+            showToast: (msg, isError = false) => {
+                const toast = document.getElementById('toast');
+                toast.textContent = msg;
+                toast.className = `toast show ${isError ? 'error' : ''}`;
+                setTimeout(() => toast.className = 'toast', 3000);
+            },
+            openModal: (id) => {
+                document.getElementById(id).classList.add('active');
+                if(id === 'entry-modal' && !document.getElementById('entry-id').value) {
+                    let defaultDate = State.selectedDate;
+                    if (!defaultDate) {
+                        const d = new Date();
+                        defaultDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                    }
+                    document.getElementById('entry-date').value = defaultDate;
+                    document.getElementById('entry-content').innerHTML = '';
+                    document.getElementById('entry-content').focus();
+                }
+            },
+            closeModal: (id) => {
+                document.getElementById(id).classList.remove('active');
+                if(id === 'entry-modal') {
+                    document.getElementById('entry-form').reset();
+                    document.getElementById('entry-content').innerHTML = ''; // 清空編輯器
+                }
+                if(id === 'login-modal') document.getElementById('login-form').reset();
+                if(id === 'password-modal') document.getElementById('password-form').reset();
+                if(id === 'tag-modal') document.getElementById('tag-form').reset();
+                if(id === 'user-modal') document.getElementById('user-form').reset();
+                if(id === 'link-modal') {
+                    document.getElementById('link-form').reset();
+                    document.getElementById('link-id').value = '';
+                }
+                document.getElementById('entry-id').value = '';
+            },
+            escapeHtml: (unsafe) => {
+                return (unsafe || '').toString()
+                     .replace(/&/g, "&amp;")
+                     .replace(/</g, "&lt;")
+                     .replace(/>/g, "&gt;")
+                     .replace(/"/g, "&quot;")
+                     .replace(/'/g, "&#039;");
+            },
+            formatDateTime: (timestamp) => {
+                if (!timestamp) return '--/--/-- --:--';
+                const d = new Date(timestamp);
+                const pad = (n) => String(n).padStart(2, '0');
+                const minguoYear = d.getFullYear() - 1911;
+                return `${minguoYear}/${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            },
+            getWeekdayStr: (dateStr) => {
+                if (!dateStr) return '';
+                const d = new Date(dateStr);
+                if (isNaN(d.getTime())) return '';
+                const weekdays = ['(日)', '(一)', '(二)', '(三)', '(四)', '(五)', '(六)'];
+                return weekdays[d.getDay()];
+            },
+            toMinguo: (dateStr) => {
+                if (!dateStr) return '';
+                const parts = dateStr.split('-');
+                if (parts.length !== 3) return dateStr;
+                return `${parts[0] - 1911}/${parts[1]}/${parts[2]}`;
+            },
+            updateClock: () => {
+                const el = document.getElementById('fs-current-time');
+                if (el) {
+                    const d = new Date();
+                    const pad = (n) => String(n).padStart(2, '0');
+                    el.textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+                }
+            }
+        };
+
+        const firebaseConfig = {};
+        
+        let app, auth, db;
+        let useMockDB = false;
+        
+        try {
+            if (!firebaseConfig.apiKey || firebaseConfig.apiKey === "您的 API KEY") {
+                useMockDB = true;
+                console.log("⚠️ 未檢測到有效的 Firebase 金鑰，已啟用【本機模擬資料庫模式】");
+            } else {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+            }
+        } catch (e) {
+            useMockDB = true;
+        }
+
+        const LocalDB = {
+            data: JSON.parse(localStorage.getItem('mock_school_db')) || { entries: [], links: [], tags: [], users: [], system: [] },
+            listeners: {},
+            save: function() { localStorage.setItem('mock_school_db', JSON.stringify(this.data)); },
+            trigger: function(col) { if(this.listeners[col]) this.listeners[col]({ docs: this.data[col].map(d => ({ id: d.id, data: () => d })) }); },
+            add: async function(col, docData) { 
+                const id = Math.random().toString(36).substr(2, 9);
+                this.data[col].push({ id, ...docData });
+                this.save(); this.trigger(col);
+                return { id };
+            },
+            update: async function(col, id, docData) {
+                const idx = this.data[col].findIndex(d => d.id === id);
+                if(idx > -1) { this.data[col][idx] = { ...this.data[col][idx], ...docData }; this.save(); this.trigger(col); }
+            },
+            delete: async function(col, id) {
+                this.data[col] = this.data[col].filter(d => d.id !== id);
+                this.save(); this.trigger(col);
+            }
+        };
+
+        window.API = {
+            onSnapshot: (colName, cb) => {
+                if (useMockDB) {
+                    LocalDB.listeners[colName] = cb;
+                    setTimeout(() => LocalDB.trigger(colName), 0);
+                } else {
+                    onSnapshot(collection(db, colName), cb, (err) => console.error("Firestore Error:", err));
+                }
+            },
+            addDoc: async (colName, data) => {
+                if (useMockDB) return LocalDB.add(colName, data);
+                else return addDoc(collection(db, colName), data);
+            },
+            updateDoc: async (colName, id, data) => {
+                if (useMockDB) return LocalDB.update(colName, id, data);
+                else return updateDoc(doc(db, colName, id), data);
+            },
+            deleteDoc: async (colName, id) => {
+                if (useMockDB) return LocalDB.delete(colName, id);
+                else return deleteDoc(doc(db, colName, id));
+            }
+        };
+
+        window.Auth = {
+            init: async () => {
+                if (!useMockDB) {
+                    try { await signInAnonymously(auth); } catch (e) {}
+                }
+                const sessionData = sessionStorage.getItem('school_app_session');
+                if(sessionData) {
+                    State.currentUser = JSON.parse(sessionData);
+                    State.isGuest = false;
+                }
+                Auth.updateUI();
+            },
+            login: () => {
+                const acc = document.getElementById('login-username').value;
+                const pass = document.getElementById('login-password').value;
+                
+                if (State.users.length === 0 && acc === 'admin' && pass === 'admin') {
+                    State.currentUser = { id: 'admin-1', account: 'admin', role: 'admin', name: '系統管理員' };
+                    State.isGuest = false;
+                    sessionStorage.setItem('school_app_session', JSON.stringify(State.currentUser));
+                    UI.closeModal('login-modal');
+                    UI.showToast(`歡迎回來，系統管理員`);
+                    Auth.updateUI();
+                    App.renderEntries();
+                    return;
+                }
+
+                const user = State.users.find(u => u.account === acc && u.password === pass);
+                if (user) {
+                    State.currentUser = { id: user.id, account: user.account, role: user.role, name: user.name };
+                    State.isGuest = false;
+                    sessionStorage.setItem('school_app_session', JSON.stringify(State.currentUser));
+                    UI.closeModal('login-modal');
+                    UI.showToast(`歡迎回來，${user.name}`);
+                    Auth.updateUI();
+                    App.renderEntries();
+                } else {
+                    UI.showToast("帳號或密碼錯誤", true);
+                }
+            },
+            logout: () => {
+                State.currentUser = null;
+                State.isGuest = true;
+                sessionStorage.removeItem('school_app_session');
+                UI.showToast("已登出");
+                Auth.updateUI();
+                App.renderEntries();
+            },
+            updateUI: () => {
+                const btnLogin = document.getElementById('btn-login-modal');
+                const btnLogout = document.getElementById('btn-logout');
+                const btnPassword = document.getElementById('btn-password-modal');
+                const userInfo = document.getElementById('user-info');
+                const adminToolbar = document.getElementById('admin-toolbar');
+                
+                if (State.isGuest) {
+                    btnLogin.classList.remove('hidden');
+                    btnLogout.classList.add('hidden');
+                    if(btnPassword) btnPassword.classList.add('hidden');
+                    userInfo.classList.add('hidden');
+                    adminToolbar.classList.add('hidden');
+                } else {
+                    btnLogin.classList.add('hidden');
+                    btnLogout.classList.remove('hidden');
+                    if(btnPassword) btnPassword.classList.remove('hidden');
+                    userInfo.classList.remove('hidden');
+                    adminToolbar.classList.remove('hidden');
+                    
+                    document.getElementById('welcome-msg').textContent = State.currentUser.name;
+                    const badge = document.getElementById('role-badge');
+                    
+                    const isAdmin = State.currentUser.role === 'admin';
+                    badge.textContent = isAdmin ? '管理員' : '協作者';
+                    
+                    document.getElementById('btn-manage-users').classList.toggle('hidden', !isAdmin);
+                    document.getElementById('btn-manage-tags').classList.toggle('hidden', !isAdmin);
+                    document.getElementById('btn-manage-links').classList.toggle('hidden', !isAdmin);
+                    
+                    const btnEditTitle = document.getElementById('btn-edit-title');
+                    if (btnEditTitle) btnEditTitle.classList.toggle('hidden', !isAdmin);
+                }
+            },
+            createUser: async () => {
+                if (!State.currentUser || State.currentUser.role !== 'admin') return UI.showToast("無權限", true);
+                
+                const acc = document.getElementById('new-user-account').value;
+                const pass = document.getElementById('new-user-pass').value;
+                const name = document.getElementById('new-user-name').value;
+                const role = document.getElementById('new-user-role').value;
+
+                if(State.users.some(u => u.account === acc)) return UI.showToast("帳號已存在", true);
+
+                try {
+                    await API.addDoc('users', { account: acc, password: pass, name, role });
+                    UI.showToast("帳號新增成功");
+                    document.getElementById('user-form').reset();
+                } catch(e) { UI.showToast("新增失敗", true); }
+            },
+            changePassword: async () => {
+                if (!State.currentUser) return;
+                const oldPass = document.getElementById('old-password').value;
+                const newPass = document.getElementById('new-password').value;
+                const confirmPass = document.getElementById('confirm-password').value;
+
+                const userRecord = State.users.find(u => u.id === State.currentUser.id);
+                if (!userRecord || userRecord.password !== oldPass) return UI.showToast("原密碼錯誤", true);
+                if (newPass !== confirmPass) return UI.showToast("兩次輸入的新密碼不一致", true);
+
+                try {
+                    await API.updateDoc('users', State.currentUser.id, { password: newPass });
+                    UI.showToast("密碼修改成功");
+                    UI.closeModal('password-modal');
+                } catch (e) { UI.showToast("密碼修改失敗", true); }
+            },
+            resetUserPassword: async (id) => {
+                if (!State.currentUser || State.currentUser.role !== 'admin') return;
+                const newPass = prompt("請輸入該帳號的新密碼：");
+                if (newPass && newPass.trim() !== "") {
+                    try {
+                        await API.updateDoc('users', id, { password: newPass.trim() });
+                        UI.showToast("密碼已成功重設");
+                    } catch(e) { UI.showToast("重設失敗", true); }
+                }
+            },
+            deleteUser: async (id) => {
+                if (!State.currentUser || State.currentUser.role !== 'admin') return;
+                if(State.currentUser.id === id) return UI.showToast("無法刪除自己", true);
+                
+                try {
+                    await API.deleteDoc('users', id);
+                    UI.showToast("帳號已刪除");
+                } catch(e) { UI.showToast("刪除失敗", true); }
+            }
+        };
+
+        window.App = {
+            init: () => {
+                document.getElementById('footer-year').textContent = new Date().getFullYear() - 1911;
+
+                UI.updateClock();
+                setInterval(UI.updateClock, 1000);
+
+                const d = new Date();
+                State.selectedDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+                document.getElementById('btn-login-modal').addEventListener('click', () => UI.openModal('login-modal'));
+                document.getElementById('btn-logout').addEventListener('click', Auth.logout);
+                const btnPasswordModal = document.getElementById('btn-password-modal');
+                if(btnPasswordModal) btnPasswordModal.addEventListener('click', () => UI.openModal('password-modal'));
+                
+                App.startListeners();
+            },
+            startListeners: () => {
+                API.onSnapshot('entries', (snapshot) => {
+                    State.entries = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                    App.renderEntries();
+                    Calendar.render();
+                });
+
+                API.onSnapshot('links', (snapshot) => {
+                    State.links = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                    App.renderLinks();
+                });
+
+                API.onSnapshot('tags', (snapshot) => {
+                    State.tags = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                    App.renderTagCheckboxes();
+                    App.renderManageTags();
+                    App.renderEntries();
+                });
+
+                API.onSnapshot('users', async (snapshot) => {
+                    State.users = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+                    if(State.users.length === 0) {
+                        try { await API.addDoc('users', { account: 'admin', password: 'admin', name: '系統管理員', role: 'admin' }); } catch(e) {}
+                    }
+                    App.renderUserList();
+                });
+
+                API.onSnapshot('system', async (snapshot) => {
+                    if (snapshot.docs.length === 0) {
+                        if (!window.systemInitLock) {
+                            window.systemInitLock = true;
+                            try { await API.addDoc('system', { title: '和風學園 網路聯絡簿' }); } catch(e) {}
+                        }
+                    } else {
+                        State.system = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() };
+                        App.renderSystem();
+                    }
+                });
+            },
+
+            // 負責計數單篇聯絡簿觀看人次的 Observer
+            setupIntersectionObserver: () => {
+                if(window.entryObserver) {
+                    window.entryObserver.disconnect();
+                }
+                window.entryObserver = new IntersectionObserver((entries, observer) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const id = entry.target.getAttribute('data-entry-id');
+                            let viewedEntries = JSON.parse(sessionStorage.getItem('viewed_entries') || '[]');
+                            
+                            // 判斷如果在這次網頁開啟期間尚未觀看過這篇，則進行計數 +1
+                            if (id && !viewedEntries.includes(id)) {
+                                viewedEntries.push(id);
+                                sessionStorage.setItem('viewed_entries', JSON.stringify(viewedEntries));
+                                
+                                const entryData = State.entries.find(e => e.id === id);
+                                if (entryData) {
+                                    API.updateDoc('entries', id, { views: (entryData.views || 0) + 1 });
+                                }
+                            }
+                            observer.unobserve(entry.target);
+                        }
+                    });
+                }, { threshold: 0.6 }); // 當文章有 60% 出現在畫面上時觸發計數
+
+                document.querySelectorAll('.entry-article').forEach(article => {
+                    window.entryObserver.observe(article);
+                });
+            },
+
+            convertFontToSpan: (htmlStr) => {
+                if (!htmlStr) return '';
+                return htmlStr.replace(/<font\s+([^>]+)>/gi, (match, attrs) => {
+                    let style = '';
+                    const sizeMatch = attrs.match(/size=["']?(\d)["']?/i);
+                    if (sizeMatch) {
+                        const sizes = {'1':'12px', '2':'14px', '3':'16px', '4':'18px', '5':'20px', '6':'24px', '7':'36px'};
+                        style += `font-size: ${sizes[sizeMatch[1]] || '16px'} !important; `;
+                    }
+                    const colorMatch = attrs.match(/color=["']?([^"'\s>]+)["']?/i);
+                    if (colorMatch) {
+                        style += `color: ${colorMatch[1]} !important; `;
+                    }
+                    
+                    let fontName = '';
+                    const faceMatch1 = attrs.match(/face\s*=\s*["']([^"']+)["']/i);
+                    const faceMatch2 = attrs.match(/face\s*=\s*([^"'\s>]+)/i);
+                    if (faceMatch1) {
+                        fontName = faceMatch1[1].trim();
+                    } else if (faceMatch2) {
+                        fontName = faceMatch2[1].trim();
+                    }
+                    
+                    if (fontName) {
+                        fontName = fontName.replace(/['"]/g, ''); 
+                        style += `font-family: '${fontName}', 'Klee One', sans-serif !important; `;
+                        if (fontName.includes('Bpmf')) {
+                            style += `line-height: 2.2 !important; display: inline-block; `;
+                        }
+                    }
+                    
+                    return `<span style="${style}">`;
+                }).replace(/<\/font>/gi, '</span>');
+            },
+
+            formatContentWithTags: (rawContent, isVertical = false) => {
+                let content = rawContent || '';
+                content = content.replace(/&lt;(\/?(?:font|span|div|br|p|b|i|u|strong|em|a)(?:\s+[^&>]*?)?)&gt;/gi, '<$1>');
+                if (!/<(?:br|div|p|h\d|ul|li|ol|table|tr|td|th)\b/i.test(content)) {
+                    content = content.replace(/\n/g, '<br>');
+                }
+                content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+                content = App.convertFontToSpan(content);
+                content = content.replace(/<a\s+href=["']([^"']+)["']([^>]*)>/gi, (match, url, rest) => {
+                    let cleanRest = rest.replace(/\btarget=["'][^"']*["']/gi, '').replace(/\bclass=["'][^"']*["']/gi, '');
+                    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-sky-300 hover:text-sky-200 underline font-bold" ${cleanRest}>`;
+                });
+                
+                State.tags.forEach(t => {
+                    const safeTagName = UI.escapeHtml(t.name);
+                    // 套用方正、白色字體的附圖樣式 Badge
+                    const badgeHtml = `<span class="tag-badge whitespace-nowrap mx-1 relative -top-[2px] shadow-sm align-middle" style="background-color: ${t.color}; font-size: 0.85em; padding: 4px 10px; border-radius: 6px; color: #ffffff !important;">${safeTagName}</span>`;
+                    const regex = new RegExp(`【${safeTagName}】`, 'g');
+                    content = content.replace(regex, badgeHtml);
+                });
+
+                // 針對直式排版，使用 DOM API 將英數字用獨立的 upright span 包覆，保留標點符號的自然旋轉
+                if (isVertical) {
+                    try {
+                        const tempDiv = document.createElement('div');
+                        tempDiv.innerHTML = content;
+                        const walker = document.createTreeWalker(tempDiv, NodeFilter.SHOW_TEXT, null, false);
+                        const nodesToReplace = [];
+                        let n;
+                        while (n = walker.nextNode()) {
+                            nodesToReplace.push(n);
+                        }
+                        nodesToReplace.forEach(node => {
+                            const text = node.nodeValue;
+                            // 將 @ 與 ＠ 加入強制正立的正則表達式中
+                            if (/[0-9a-zA-Z:：@＠]/.test(text)) {
+                                const parts = text.split(/([0-9a-zA-Z:：@＠]+)/);
+                                const df = document.createDocumentFragment();
+                                parts.forEach((part, index) => {
+                                    if (part === '') return;
+                                    if (index % 2 === 1) { // 這是被配對到的英數字、冒號或 @
+                                        const span = document.createElement('span');
+                                        span.style.textOrientation = 'upright';
+                                        span.textContent = part;
+                                        df.appendChild(span);
+                                    } else { // 其餘標點符號或中文字
+                                        df.appendChild(document.createTextNode(part));
+                                    }
+                                });
+                                node.parentNode.insertBefore(df, node);
+                                node.parentNode.removeChild(node);
+                            }
+                        });
+                        content = tempDiv.innerHTML;
+                    } catch (e) {
+                        console.error("處理直式文字時發生錯誤:", e);
+                    }
+                }
+
+                return content;
+            },
+
+            insertLink: () => {
+                const selection = window.getSelection();
+                if (selection.rangeCount === 0) return;
+                const range = selection.getRangeAt(0);
+
+                const url = prompt("請輸入超連結網址 (例如：https://...)：", "https://");
+                if (url) {
+                    selection.removeAllRanges();
+                    selection.addRange(range);
+                    document.execCommand('createLink', false, url);
+                }
+            },
+
+            insertTagToContent: (tagName) => {
+                const editor = document.getElementById('entry-content');
+                const insertText = `【${tagName}】`;
+                editor.focus();
+                
+                const selection = window.getSelection();
+                if (selection.getRangeAt && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    let isInside = false;
+                    let node = range.commonAncestorContainer;
+                    while(node) {
+                        if (node === editor) { isInside = true; break; }
+                        node = node.parentNode;
+                    }
+                    
+                    if (isInside) {
+                        range.deleteContents();
+                        const textNode = document.createTextNode(insertText);
+                        range.insertNode(textNode);
+                        range.setStartAfter(textNode);
+                        range.setEndAfter(textNode);
+                        selection.removeAllRanges();
+                        selection.addRange(range);
+                        return;
+                    }
+                }
+                
+                editor.appendChild(document.createTextNode(insertText));
+                const newRange = document.createRange();
+                newRange.selectNodeContents(editor);
+                newRange.collapse(false);
+                selection.removeAllRanges();
+                selection.addRange(newRange);
+            },
+            
+            saveEntry: async () => {
+                if (State.isGuest) return;
+                
+                const id = document.getElementById('entry-id').value;
+                const date = document.getElementById('entry-date').value;
+                let content = document.getElementById('entry-content').innerHTML; 
+                content = App.convertFontToSpan(content);
+                
+                const selectedTags = State.tags
+                    .filter(t => content.includes(`【${t.name}】`))
+                    .map(t => t.id);
+
+                const data = {
+                    date, content, tags: selectedTags,
+                    authorId: State.currentUser.id,
+                    authorName: State.currentUser.name,
+                    timestamp: new Date().getTime(),
+                    views: id ? undefined : 0 // 新增時預設 0 人次
+                };
+
+                try {
+                    if (id) {
+                        await API.updateDoc('entries', id, data);
+                        UI.showToast("更新成功");
+                    } else {
+                        await API.addDoc('entries', data);
+                        UI.showToast("新增成功");
+                    }
+                    UI.closeModal('entry-modal');
+                } catch (e) { UI.showToast("儲存失敗", true); }
+            },
+            editEntry: (id) => {
+                const entry = State.entries.find(e => e.id === id);
+                if(!entry) return;
+                
+                document.getElementById('entry-id').value = entry.id;
+                document.getElementById('entry-date').value = entry.date;
+                document.getElementById('entry-content').innerHTML = entry.content;
+                
+                UI.openModal('entry-modal');
+                document.getElementById('entry-modal-title').textContent = "修改聯絡簿";
+            },
+            deleteEntry: async (id) => {
+                try {
+                    await API.deleteDoc('entries', id);
+                    UI.showToast("已刪除");
+                } catch (e) { UI.showToast("刪除失敗", true); }
+            },
+            renderSystem: () => {
+                if (!State.system) return;
+                const systemTitle = State.system.title || '和風學園 網路聯絡簿';
+                const titleEl = document.getElementById('main-system-title');
+                if (titleEl) titleEl.textContent = systemTitle;
+                const footerTitleEl = document.getElementById('footer-system-title');
+                if (footerTitleEl) footerTitleEl.textContent = systemTitle;
+                document.title = systemTitle;
+            },
+            editSystemTitle: () => {
+                if (!State.currentUser || State.currentUser.role !== 'admin' || !State.system) return;
+                const newTitle = prompt("請輸入新的聯絡簿名稱：", State.system.title || '和風學園 網路聯絡簿');
+                if (newTitle && newTitle.trim() !== "") {
+                    API.updateDoc('system', State.system.id, { title: newTitle.trim() });
+                    UI.showToast("名稱已更新");
+                }
+            },
+            renderEntries: () => {
+                const container = document.getElementById('entries-container');
+                let filtered = [...State.entries];
+
+                filtered.sort((a, b) => {
+                    if (a.date !== b.date) return new Date(b.date) - new Date(a.date);
+                    return b.timestamp - a.timestamp;
+                });
+
+                if (State.selectedDate) {
+                    filtered = filtered.filter(e => e.date === State.selectedDate);
+                    const filterText = document.getElementById('current-filter-text');
+                    filterText.textContent = `篩選日期：${UI.toMinguo(State.selectedDate)}`;
+                    filterText.classList.remove('hidden');
+                } else {
+                    const filterText = document.getElementById('current-filter-text');
+                    filterText.textContent = `顯示全部`;
+                    filterText.classList.add('hidden');
+                }
+
+                if (filtered.length === 0) {
+                    container.innerHTML = `<div class="text-center py-10 text-gray-400">沒有符合的聯絡簿資料</div>`;
+                    return;
+                }
+
+                container.innerHTML = filtered.map(entry => {
+                    const canEdit = !State.isGuest && (State.currentUser.role === 'admin' || State.currentUser.id === entry.authorId);
+                    const formattedContent = App.formatContentWithTags(entry.content);
+                    
+                    let legacyTagsHtml = '';
+                    (entry.tags || []).forEach(tagId => {
+                        const t = State.tags.find(x => x.id === tagId);
+                        if(t && !entry.content.includes(`【${t.name}】`)) {
+                            legacyTagsHtml += `<span class="tag-badge whitespace-nowrap mr-1 relative -top-[1px]" style="background-color: ${t.color}; border-radius: 6px;">${UI.escapeHtml(t.name)}</span>`;
+                        }
+                    });
+
+                    // 取得獨立時間與人次
+                    const timeStr = entry.timestamp ? UI.formatDateTime(entry.timestamp) : '--/--/-- --:--';
+                    const viewsCount = entry.views || 0;
+
+                    return `
+                        <article class="entry-article bg-board-card p-5 rounded-lg shadow-sm border border-dashed border-white/20 flex flex-col gap-3 relative overflow-hidden group" data-entry-id="${entry.id}">
+                            <div class="absolute left-0 top-0 bottom-0 w-1 bg-ao opacity-80"></div>
+                            
+                            <div class="flex justify-between items-start relative">
+                                <div class="w-full flex items-center gap-3 pr-12 flex-wrap sm:flex-nowrap">
+                                    <div class="text-lg text-ao font-bold font-serif whitespace-nowrap flex items-center">
+                                        ${UI.toMinguo(entry.date)} <span class="ml-1 text-base font-medium opacity-90 text-yellow-200">${UI.getWeekdayStr(entry.date)}</span>
+                                    </div>
+                                    <button onclick="App.showFullscreen('${entry.id}')" class="text-ao hover:text-white bg-ao/10 hover:bg-ao px-2 py-1 rounded text-xs font-bold transition flex items-center gap-1 whitespace-nowrap border border-dashed border-ao/50"><i class="fa-solid fa-expand"></i> 全螢幕</button>
+                                    
+                                    <div class="ml-auto hidden sm:flex text-gray-300 text-[13px] gap-4 items-center font-sans tracking-wide">
+                                        <span class="whitespace-nowrap">最後更新: <span class="text-gray-400">${timeStr}</span></span>
+                                        <span class="whitespace-nowrap bg-blue-800/80 px-2 py-0.5 rounded text-white border border-blue-600">瀏覽人次: <span class="font-bold">${viewsCount}</span></span>
+                                    </div>
+                                </div>
+                                ${canEdit ? `
+                                <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition absolute right-0 top-0 bg-board-card p-1 rounded">
+                                    <button onclick="App.editEntry('${entry.id}')" class="text-gray-300 hover:text-ao" title="修改"><i class="fa-solid fa-pen"></i></button>
+                                    <button onclick="App.deleteEntry('${entry.id}')" class="text-gray-300 hover:text-sakura" title="刪除"><i class="fa-solid fa-trash"></i></button>
+                                </div>
+                                ` : ''}
+                            </div>
+                            
+                            <div class="text-gray-200 leading-relaxed bg-black/10 p-4 rounded text-[15px] japanese-border mt-1 content-auto-wrap">
+                                ${legacyTagsHtml}${formattedContent}
+                            </div>
+                            
+                            <div class="text-right text-xs text-gray-400">
+                                發布者: ${UI.escapeHtml(entry.authorName)}
+                            </div>
+                        </article>
+                    `;
+                }).join('');
+
+                // 觸發單篇聯絡簿的曝光計數
+                setTimeout(App.setupIntersectionObserver, 100);
+            },
+            
+            showFullscreen: (id) => {
+                State.currentFsId = id; 
+                const isVertical = State.isFullscreenVertical;
+
+                const baseEntry = State.entries.find(e => e.id === id);
+                if(!baseEntry) return;
+
+                const baseDateStr = baseEntry.date;
+                const baseDateObj = new Date(baseDateStr);
+                
+                const nextDateObj = new Date(baseDateObj);
+                nextDateObj.setDate(nextDateObj.getDate() + 1);
+                const nextDateStr = `${nextDateObj.getFullYear()}-${String(nextDateObj.getMonth() + 1).padStart(2, '0')}-${String(nextDateObj.getDate()).padStart(2, '0')}`;
+
+                const todayEntries = State.entries.filter(e => e.date === baseDateStr);
+                const tomorrowEntries = State.entries.filter(e => e.date === nextDateStr);
+                
+                const isSingle = tomorrowEntries.length === 0;
+
+                // 處理直式排版時，日期數字需強制轉正
+                let displayDate = UI.toMinguo(baseDateStr);
+                let displayNextDate = UI.toMinguo(nextDateStr);
+                if (isVertical) {
+                    displayDate = displayDate.replace(/([0-9a-zA-Z]+)/g, '<span style="text-orientation: upright;">$1</span>');
+                    displayNextDate = displayNextDate.replace(/([0-9a-zA-Z]+)/g, '<span style="text-orientation: upright;">$1</span>');
+                }
+                
+                const todayTitle = `${displayDate} <span class="text-xl md:text-2xl ml-1 font-medium opacity-90 text-yellow-100">${UI.getWeekdayStr(baseDateStr)}</span>`;
+                const tomorrowTitle = `${displayNextDate} <span class="text-xl md:text-2xl ml-1 font-medium opacity-90 text-yellow-100">${UI.getWeekdayStr(nextDateStr)}</span> <span class="text-lg md:text-xl text-sakura ml-2 font-normal">(明日)</span>`;
+
+                const renderFsSection = (title, entries) => {
+                    if (entries.length === 0) {
+                        return `
+                            <div class="bg-black/10 rounded-2xl shadow-sm p-6 md:p-8 border-2 border-dashed ${isVertical ? 'border-white/20' : 'border-ao/50'} h-full flex flex-col min-h-0">
+                                <div class="text-xl md:text-2xl text-gray-400 font-bold font-serif tracking-tight mb-5 pb-4 border-b-2 border-dashed border-white/10 flex items-center gap-2 shrink-0">
+                                    <i class="fa-regular fa-calendar"></i> ${title}
+                                </div>
+                                <div class="flex-grow flex items-center justify-center text-gray-400 text-xl md:text-2xl font-sans py-20">
+                                    此日無聯絡簿內容
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    let contentHtml = entries.map(entry => {
+                        const formattedContent = App.formatContentWithTags(entry.content, isVertical); // 傳入是否為直式
+                        let legacyTagsHtml = '';
+                        (entry.tags || []).forEach(tagId => {
+                            const t = State.tags.find(x => x.id === tagId);
+                            if(t && !entry.content.includes(`【${t.name}】`)) {
+                                if (isVertical) {
+                                    legacyTagsHtml += `<span class="tag-badge whitespace-nowrap mb-2" style="background-color: ${t.color}; font-size: 0.6em; padding: 6px 12px; color: #ffffff !important;">${UI.escapeHtml(t.name)}</span>`;
+                                } else {
+                                    legacyTagsHtml += `<span class="tag-badge whitespace-nowrap mr-2 relative -top-[2px]" style="background-color: ${t.color}; font-size: 0.85em; padding: 4px 10px; border-radius: 6px; color: #ffffff !important;">${UI.escapeHtml(t.name)}</span>`;
+                                }
+                            }
+                        });
+                        
+                        if (isVertical) {
+                            return `
+                                <div class="ml-12 last:ml-0 flex flex-col h-full">
+                                    <!-- 直式排版：日期在最右側 (第一行) -->
+                                    <div class="text-2xl md:text-3xl text-ao font-bold font-serif tracking-widest flex items-center gap-2 shrink-0 ml-4">
+                                        <i class="fa-regular fa-calendar-check"></i> ${title}
+                                    </div>
+                                    <!-- 發布者在第二行 -->
+                                    <div class="text-gray-400 text-sm md:text-base ml-4 flex items-center gap-2 shrink-0 border-l border-dashed border-ao/30 pl-2">
+                                        <i class="fa-solid fa-user-pen rotate-90"></i> 發布者: ${UI.escapeHtml(entry.authorName)}
+                                    </div>
+                                    <!-- 內容在左側 (行距縮小為 1.8) -->
+                                    <div class="text-lg md:text-2xl text-gray-200 font-sans tracking-widest content-auto-wrap mt-4" style="line-height: 1.8;">
+                                        ${legacyTagsHtml}${formattedContent}
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            return `
+                                <div class="mb-6 last:mb-0">
+                                    <!-- 橫式排版：日期與發布者在同一行，以虛線墊底 -->
+                                    <div class="flex items-baseline gap-4 mb-4 pb-4 border-b border-dashed border-ao/60 flex-wrap">
+                                        <div class="text-2xl md:text-3xl text-ao font-bold font-serif tracking-tight flex items-center gap-2 shrink-0">
+                                            <i class="fa-regular fa-calendar-check"></i> ${title}
+                                        </div>
+                                        <div class="text-gray-400 text-sm md:text-base flex items-center gap-2 shrink-0">
+                                            <i class="fa-solid fa-user-pen"></i> 發布者: ${UI.escapeHtml(entry.authorName)}
+                                        </div>
+                                    </div>
+                                    <!-- 內容 (行距縮小為 1.4) -->
+                                    <div class="text-xl md:text-3xl text-gray-100 font-sans content-auto-wrap" style="line-height: 1.4;">
+                                        ${legacyTagsHtml}${formattedContent}
+                                    </div>
+                                </div>
+                            `;
+                        }
+                    }).join(''); // 移除橫式的外部分隔線，改由上方 mb-6 隔開
+
+                    if (isVertical) {
+                        return `
+                            <div class="bg-board-card rounded-2xl shadow-xl p-0 border-2 border-dashed border-ao/50 relative overflow-hidden flex flex-col flex-grow h-full min-h-0">
+                                <div class="absolute top-0 left-0 right-0 h-2 bg-ao shrink-0"></div>
+                                <div class="vertical-text-layout flex-grow p-6 md:p-8">
+                                    ${contentHtml}
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        // 橫式完全還原附圖設計
+                        return `
+                            <div class="bg-[#143022] rounded-xl shadow-xl p-0 border-2 border-dashed border-ao flex flex-col relative overflow-hidden h-full flex-grow min-h-0" style="background-image: url('https://www.transparenttextures.com/patterns/black-chalk.png');">
+                                <div class="horizontal-text-layout">
+                                    ${contentHtml}
+                                </div>
+                            </div>
+                        `;
+                    }
+                };
+
+                const fsContainer = document.getElementById('fs-container');
+                
+                if (isVertical) {
+                    // 直式排版：強制只展示當天一天的聯絡簿
+                    fsContainer.className = "flex flex-col max-w-5xl mx-auto gap-4 items-stretch w-full h-full flex-grow min-h-0";
+                    fsContainer.innerHTML = renderFsSection(todayTitle, todayEntries);
+                } else {
+                    if (isSingle) {
+                        fsContainer.className = "grid grid-cols-1 max-w-5xl mx-auto gap-4 items-stretch w-full h-full flex-grow min-h-0";
+                        fsContainer.innerHTML = renderFsSection(todayTitle, todayEntries);
+                    } else {
+                        fsContainer.className = "grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch w-full h-full flex-grow min-h-0";
+                        fsContainer.innerHTML = renderFsSection(todayTitle, todayEntries) + renderFsSection(tomorrowTitle, tomorrowEntries);
+                    }
+                }
+                
+                UI.openModal('fullscreen-modal');
+            },
+            toggleFsLayout: () => {
+                State.isFullscreenVertical = !State.isFullscreenVertical;
+                if (State.currentFsId) {
+                    App.showFullscreen(State.currentFsId); 
+                }
+            },
+
+            // --- Links/Docs ---
+            saveLink: async () => {
+                if(!State.currentUser || State.currentUser.role !== 'admin') return;
+                const id = document.getElementById('link-id').value;
+                const type = document.getElementById('link-type').value;
+                const title = document.getElementById('link-title').value;
+                let url = document.getElementById('link-url').value;
+                if (!url.startsWith('http')) url = 'https://' + url;
+                
+                const expireDate = document.getElementById('link-expire-date').value;
+                const tagCheckboxes = document.querySelectorAll('input[name="link-tags"]:checked');
+                const selectedTags = Array.from(tagCheckboxes).map(cb => cb.value);
+
+                try {
+                    if (id) {
+                        await API.updateDoc('links', id, { type, title, url, expireDate, tags: selectedTags });
+                        UI.showToast("資源更新成功");
+                    } else {
+                        await API.addDoc('links', { type, title, url, expireDate, tags: selectedTags, views: 0, timestamp: new Date().getTime() });
+                        UI.showToast("新增資源成功");
+                    }
+                    UI.closeModal('link-modal');
+                } catch(e) { UI.showToast("儲存失敗", true); }
+            },
+            editLink: (id) => {
+                const link = State.links.find(l => l.id === id);
+                if(!link) return;
+
+                document.getElementById('link-id').value = link.id;
+                document.getElementById('link-type').value = link.type || 'document';
+                document.getElementById('link-title').value = link.title;
+                document.getElementById('link-url').value = link.url;
+                document.getElementById('link-expire-date').value = link.expireDate || '';
+
+                document.querySelectorAll('input[name="link-tags"]').forEach(cb => {
+                    cb.checked = (link.tags || []).includes(cb.value);
+                });
+
+                UI.openModal('link-modal');
+                document.getElementById('link-modal-title').textContent = "修改資源/文件連結";
+            },
+            deleteLink: async (id) => {
+                if(!State.currentUser || State.currentUser.role !== 'admin') return;
+                try { await API.deleteDoc('links', id); UI.showToast("已刪除資源"); } 
+                catch(e) { UI.showToast("刪除失敗", true); }
+            },
+            recordLinkView: async (id, url) => {
+                const link = State.links.find(l => l.id === id);
+                if(link) {
+                    try { await API.updateDoc('links', id, { views: (link.views || 0) + 1 }); } 
+                    catch(e) {}
+                }
+                window.open(url, '_blank');
+            },
+            renderLinks: () => {
+                const container = document.getElementById('links-container');
+                const isAdmin = !State.isGuest && State.currentUser.role === 'admin';
+                const d = new Date();
+                const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                
+                const visibleLinks = State.links.filter(link => {
+                    const isExpired = link.expireDate && link.expireDate < todayStr;
+                    if (isExpired && !isAdmin) return false;
+                    return true;
+                });
+                
+                if(visibleLinks.length === 0) {
+                    container.innerHTML = `<div class="text-sm text-gray-400">目前沒有文件或網站</div>`;
+                    return;
+                }
+
+                const sorted = [...visibleLinks].sort((a,b) => b.timestamp - a.timestamp);
+                container.innerHTML = sorted.map(link => {
+                    const icon = link.type === 'document' ? 'fa-file-lines text-sakura' : 'fa-globe text-chalk-blue';
+                    const isExpired = link.expireDate && link.expireDate < todayStr;
+                    const linkTagsHtml = (link.tags || []).map(tagId => {
+                        const t = State.tags.find(x => x.id === tagId);
+                        if(!t) return '';
+                        return `<span class="tag-badge whitespace-nowrap" style="background-color: ${t.color}; border-radius: 6px;">${UI.escapeHtml(t.name)}</span>`;
+                    }).join(' ');
+
+                    return `
+                        <div class="flex items-center justify-between p-3 border border-dashed border-white/20 rounded hover:shadow-md transition ${isExpired ? 'bg-black/20 opacity-60' : 'bg-black/10'} group">
+                            <button onclick="App.recordLinkView('${link.id}', '${link.url}')" class="flex items-center gap-3 flex-grow text-left">
+                                <i class="fa-solid ${icon} text-xl"></i>
+                                <div>
+                                    <div class="font-bold text-gray-100 text-sm flex items-center gap-2">
+                                        ${linkTagsHtml ? `<div class="flex gap-1">${linkTagsHtml}</div>` : ''}
+                                        <span class="hover:text-ao transition">${UI.escapeHtml(link.title)} ${isExpired ? '<span class="text-xs text-red-400 font-normal ml-1">(已過期)</span>' : ''}</span>
+                                    </div>
+                                    <div class="text-xs text-gray-400 mt-1 flex items-center gap-3">
+                                        <span>觀看次數: ${link.views || 0}</span>
+                                        ${link.expireDate ? `<span class="text-sakura"><i class="fa-regular fa-clock"></i> 期限至: ${UI.toMinguo(link.expireDate)}</span>` : ''}
+                                    </div>
+                                </div>
+                            </button>
+                            ${isAdmin ? `
+                                <div class="flex gap-2 opacity-0 group-hover:opacity-100 transition px-2">
+                                    <button onclick="App.editLink('${link.id}')" class="text-gray-400 hover:text-ao" title="修改"><i class="fa-solid fa-pen text-sm"></i></button>
+                                    <button onclick="App.deleteLink('${link.id}')" class="text-gray-400 hover:text-sakura" title="刪除"><i class="fa-solid fa-trash text-sm"></i></button>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                }).join('');
+            },
+
+            // --- Tags ---
+            addTag: async () => {
+                if(!State.currentUser || State.currentUser.role !== 'admin') return;
+                const name = document.getElementById('new-tag-name').value;
+                const color = document.getElementById('new-tag-color').value;
+                try {
+                    await API.addDoc('tags', { name, color });
+                    document.getElementById('new-tag-name').value = '';
+                    UI.showToast("標籤新增成功");
+                } catch(e) { UI.showToast("新增失敗", true); }
+            },
+            deleteTag: async (id) => {
+                if(!State.currentUser || State.currentUser.role !== 'admin') return;
+                try { await API.deleteDoc('tags', id); UI.showToast("標籤已刪除"); } 
+                catch(e) { UI.showToast("刪除失敗", true); }
+            },
+            renderTagCheckboxes: () => {
+                const entryContainer = document.getElementById('entry-tags-container');
+                const linkContainer = document.getElementById('link-tags-container');
+                
+                if(entryContainer) {
+                    entryContainer.innerHTML = State.tags.map(tag => `
+                        <button type="button" onclick="App.insertTagToContent('${UI.escapeHtml(tag.name)}')" class="inline-flex items-center gap-1 bg-black/30 px-2 py-1 border border-dashed border-white/20 rounded cursor-pointer hover:bg-black/50 transition shadow-sm">
+                            <span class="text-sm flex items-center gap-1 text-gray-100 font-bold">
+                                <span class="w-3 h-3 rounded-sm inline-block" style="background-color:${tag.color}"></span>
+                                + ${UI.escapeHtml(tag.name)}
+                            </span>
+                        </button>
+                    `).join('');
+                }
+
+                if(linkContainer) {
+                    linkContainer.innerHTML = State.tags.map(tag => `
+                        <label class="inline-flex items-center gap-1 bg-black/30 px-2 py-1 border border-dashed border-white/20 rounded cursor-pointer hover:bg-black/50">
+                            <input type="checkbox" name="link-tags" value="${tag.id}" class="accent-ao">
+                            <span class="text-sm flex items-center gap-1 text-gray-100 font-bold">
+                                <span class="w-3 h-3 rounded-sm inline-block" style="background-color:${tag.color}"></span>
+                                ${UI.escapeHtml(tag.name)}
+                            </span>
+                        </label>
+                    `).join('');
+                }
+            },
+            renderManageTags: () => {
+                const container = document.getElementById('manage-tags-container');
+                if(!container) return;
+                container.innerHTML = State.tags.map(tag => `
+                    <div class="flex justify-between items-center p-2 border border-dashed border-white/20 rounded bg-black/10">
+                        <div class="flex items-center gap-2">
+                            <span class="w-4 h-4 rounded-sm inline-block" style="background-color:${tag.color}"></span>
+                            <span class="text-white font-bold">${UI.escapeHtml(tag.name)}</span>
+                        </div>
+                        <button onclick="App.deleteTag('${tag.id}')" class="text-sakura hover:text-sakura-dark text-sm"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `).join('');
+            },
+
+            // --- Users ---
+            renderUserList: () => {
+                const tbody = document.getElementById('user-list-tbody');
+                if(!tbody) return;
+                tbody.innerHTML = State.users.map(u => `
+                    <tr class="border-b border-dashed border-white/10 hover:bg-white/5 text-white">
+                        <td class="p-2">${UI.escapeHtml(u.name)}</td>
+                        <td class="p-2">${UI.escapeHtml(u.account)}</td>
+                        <td class="p-2">
+                            <span class="px-2 py-1 rounded text-xs ${u.role === 'admin' ? 'bg-ao text-washi' : 'bg-gray-700'} font-bold">
+                                ${u.role === 'admin' ? '管理員' : '協作者'}
+                            </span>
+                        </td>
+                        <td class="p-2 text-right">
+                            <button onclick="Auth.resetUserPassword('${u.id}')" class="text-ao hover:text-ao-dark text-sm mr-3" title="重設密碼"><i class="fa-solid fa-key"></i></button>
+                            <button onclick="Auth.deleteUser('${u.id}')" class="text-sakura hover:text-sakura-dark text-sm" title="刪除帳號"><i class="fa-solid fa-trash"></i></button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        };
+
+        window.Calendar = {
+            render: () => {
+                const date = State.currentCalendarDate;
+                const year = date.getFullYear();
+                const month = date.getMonth();
+                
+                document.getElementById('calendar-month').textContent = `${year - 1911}年 ${month + 1}月`;
+                
+                const firstDay = new Date(year, month, 1).getDay();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const today = new Date();
+                
+                const grid = document.getElementById('calendar-grid');
+                let html = '';
+                
+                for (let i = 0; i < firstDay; i++) {
+                    html += `<div class="p-2"></div>`;
+                }
+                
+                for (let i = 1; i <= daysInMonth; i++) {
+                    const cellDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
+                    const isToday = i === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+                    const isSelected = State.selectedDate === cellDateStr;
+                    const hasEntry = State.entries.some(e => e.date === cellDateStr);
+                    
+                    let classes = `p-2 rounded cursor-pointer transition relative hover:bg-ao hover:text-washi `;
+                    if (isSelected) classes += `bg-ao text-washi font-bold `;
+                    else if (isToday) classes += `border border-dashed border-ao text-ao font-bold `;
+                    else classes += `text-gray-200 `;
+
+                    html += `
+                        <div class="${classes}" onclick="Calendar.selectDate('${cellDateStr}')">
+                            ${i}
+                            ${hasEntry ? `<div class="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 bg-ao rounded-full ${isSelected||isToday ? 'bg-washi' : ''}"></div>` : ''}
+                        </div>
+                    `;
+                }
+                grid.innerHTML = html;
+            },
+            prevMonth: () => {
+                State.currentCalendarDate.setMonth(State.currentCalendarDate.getMonth() - 1);
+                Calendar.render();
+            },
+            nextMonth: () => {
+                State.currentCalendarDate.setMonth(State.currentCalendarDate.getMonth() + 1);
+                Calendar.render();
+            },
+            selectDate: (dateStr) => {
+                if(State.selectedDate === dateStr) {
+                    State.selectedDate = null;
+                } else {
+                    State.selectedDate = dateStr;
+                }
+                App.renderEntries();
+                Calendar.render();
+            }
+        };
+
+        // Bootstrap Application
+        document.addEventListener('DOMContentLoaded', () => {
+            Auth.init().then(() => {
+                App.init();
+                Calendar.render();
+            });
+        });
+
+    </script>
+</body>
+</html>
